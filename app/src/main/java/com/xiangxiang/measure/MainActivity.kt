@@ -3,6 +3,7 @@ package com.xiangxiang.measure
 import android.app.Activity
 import android.os.Bundle
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.view.Surface
 import android.graphics.*
@@ -455,26 +456,25 @@ class MainActivity : Activity(), SensorEventListener {
 
             if (isLandscapeMode) {
                 val h = height.toFloat()
-                // 横屏：横向水泡放左侧，纵向水泡放右侧
+                // 横屏：长水泡占满画布宽度，中心严格对准屏幕中心
+                val vialWidth = w - dp(32).toFloat()
+                val vialHeight = dp(54).toFloat()
+                val centerY = h * 0.50f
+
                 val horizontalRect = RectF(
-                    dp(8).toFloat(), h * 0.43f,
-                    w * 0.64f, h * 0.43f + dp(48)
+                    (w - vialWidth) / 2f,
+                    centerY - vialHeight / 2f,
+                    (w + vialWidth) / 2f,
+                    centerY + vialHeight / 2f
                 )
                 drawVial(canvas, horizontalRect, horizontal, true)
-
-                val verticalRect = RectF(
-                    w * 0.78f, dp(42).toFloat(),
-                    w * 0.78f + dp(54), h - dp(12).toFloat()
-                )
-                drawVial(canvas, verticalRect, vertical, false)
 
                 p.shader = null
                 p.style = Paint.Style.FILL
                 p.color = Color.WHITE
                 p.textSize = dp(13).toFloat()
                 p.textAlign = Paint.Align.CENTER
-                canvas.drawText("横向", w * 0.32f, dp(25).toFloat(), p)
-                canvas.drawText("纵向", w * 0.78f + dp(27), h - dp(2).toFloat(), p)
+                canvas.drawText("水平长水泡", w / 2f, centerY - dp(42).toFloat(), p)
             } else {
                 val horizontalRect = RectF(
                     dp(12).toFloat(), dp(48).toFloat(),
@@ -506,59 +506,56 @@ class MainActivity : Activity(), SensorEventListener {
         nav.visibility = View.GONE
 
         content.removeAllViews()
-        content.orientation = LinearLayout.HORIZONTAL
+        content.orientation = LinearLayout.VERTICAL
         content.gravity = Gravity.CENTER
-        content.setPadding(dp(4), dp(4), dp(4), dp(4))
+        content.setPadding(dp(8), dp(4), dp(8), dp(4))
 
-        val left = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        statusText = text("正在读取传感器…", 17f, green, true)
+        content.addView(
+            statusText,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(34)
+            )
+        )
+
+        vialView = VialView(this)
+        content.addView(
+            vialView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            )
+        )
+
+        angleText = text("横向 0.0°     纵向 0.0°", 16f, white, true)
+        content.addView(
+            angleText,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(38)
+            )
+        )
+
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(4), 0, dp(4), 0)
         }
 
-        left.addView(text("双轴气泡水平尺", 17f, white, true))
-        statusText = text("正在读取传感器…", 17f, green, true)
-        left.addView(statusText)
-
-        vialView = VialView(this)
-        left.addView(
-            vialView,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(270)
-            )
-        )
-
-        val right = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(8), 0, dp(8), 0)
-            background = rounded(Color.rgb(17, 34, 54), 18)
-        }
-
-        angleText = text("横向 0.0°\n纵向 0.0°", 19f, white, true)
-        angleText.setPadding(0, dp(8), 0, dp(8))
-        right.addView(angleText)
-
-        val soundRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        soundRow.addView(text("声音提示", 14f))
         val soundSwitch = Switch(this).apply {
+            text = "声音提示"
+            textSize = 12f
             isChecked = soundEnabled
             setOnCheckedChangeListener { _, checked ->
                 soundEnabled = checked
                 if (!checked) tone?.stopTone()
             }
         }
-        soundRow.addView(soundSwitch)
-        right.addView(soundRow)
+        controls.addView(soundSwitch)
 
         thresholdLabel = text(
-            "提示阈值：${"%.1f".format(threshold)}°",
-            14f, Color.LTGRAY
+            "阈值 ${"%.1f".format(threshold)}°",
+            12f, Color.LTGRAY
         )
-        right.addView(thresholdLabel)
+        controls.addView(thresholdLabel)
 
         val seek = SeekBar(this).apply {
             max = 4
@@ -566,20 +563,23 @@ class MainActivity : Activity(), SensorEventListener {
             setOnSeekBarChangeListener(
                 object : SeekBar.OnSeekBarChangeListener {
                     override fun onProgressChanged(
-                        s: SeekBar?, p: Int, user: Boolean
+                        s: SeekBar?, progress: Int, user: Boolean
                     ) {
-                        threshold = 0.5f + p
+                        threshold = 0.5f + progress
                         thresholdLabel.text =
-                            "提示阈值：${"%.1f".format(threshold)}°"
+                            "阈值 ${"%.1f".format(threshold)}°"
                     }
                     override fun onStartTrackingTouch(s: SeekBar?) {}
                     override fun onStopTrackingTouch(s: SeekBar?) {}
                 }
             )
         }
-        right.addView(seek)
+        controls.addView(
+            seek,
+            LinearLayout.LayoutParams(dp(105), dp(42))
+        )
 
-        right.addView(button("校准当前水平零点") {
+        controls.addView(button("校准") {
             offsetX += angleX
             offsetY += angleY
             angleX = 0f
@@ -590,18 +590,16 @@ class MainActivity : Activity(), SensorEventListener {
             Toast.makeText(this, "校准完成", Toast.LENGTH_SHORT).show()
         })
 
-        right.addView(button("返回竖屏") {
+        controls.addView(button("返回") {
             exitLandscape()
             showLevel()
         })
 
         content.addView(
-            left,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
-        )
-        content.addView(
-            right,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+            controls,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
+            )
         )
 
         updateLevel()
@@ -618,20 +616,18 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun showCamera() {
-        preparePortraitPage()
-        currentPage = "camera"
         tone?.stopTone()
-        content.removeAllViews()
-        content.addView(text("摄像头实景测量", 22f, white, true))
-        content.addView(text("下一阶段接入 ARCore 空间测量", 16f, Color.LTGRAY))
-        content.addView(text("扫描环境后，点击起点和终点计算长度。", 14f))
-        content.addView(button("检查摄像头测量支持情况") {
+        try {
+            startActivity(
+                Intent(this, ArMeasureActivity::class.java)
+            )
+        } catch (e: Exception) {
             Toast.makeText(
                 this,
-                "摄像头测量模块将在下一阶段接入",
+                "无法启动 AR 测距：${e.message}",
                 Toast.LENGTH_LONG
             ).show()
-        })
+        }
     }
 
     private fun showRuler() {

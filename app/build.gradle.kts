@@ -24,3 +24,7 @@ android {
         jvmTarget = "17"
     }
 }
+
+dependencies {
+    implementation("com.google.ar:core:1.56.0")
+}
